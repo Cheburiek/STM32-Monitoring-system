@@ -16,7 +16,7 @@ extern UART_HandleTypeDef SIM800_UART;
  * settings, module parameters, or initial communication.
  * @return Init result (HAL_OK if everything inited fine, HAL_ERROR if not.)
  */
-uint8_t SIM800L_init();
+void SIM800L_init();
 
 /**
  * @brief UART callback function for SIM800L module.

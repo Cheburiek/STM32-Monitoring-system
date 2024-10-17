@@ -86,6 +86,9 @@ const osThreadAttr_t co2_led_Task_attributes = {
 		.stack_size = 128 * 4,
 		.priority = (osPriority_t)osPriorityLow,
 };
+/* Definitions for ScreenMutex */
+osMutexId_t ScreenMutexHandle;
+const osMutexAttr_t ScreenMutex_attributes = {.name = "ScreenMutex"};
 /* Definitions for CO2_Sem */
 osSemaphoreId_t CO2_SemHandle;
 const osSemaphoreAttr_t CO2_Sem_attributes = {.name = "CO2_Sem"};
@@ -193,6 +196,9 @@ int main(void) {
 
 	/* Init scheduler */
 	osKernelInitialize();
+	/* Create the mutex(es) */
+	/* creation of ScreenMutex */
+	ScreenMutexHandle = osMutexNew(&ScreenMutex_attributes);
 
 	/* USER CODE BEGIN RTOS_MUTEX */
 	/* add mutexes, ... */
@@ -721,20 +727,20 @@ static void sensor_init(void) {
 		} else if (barometr_sensor_init(&hi2c2)) {
 			get_init_result = 1;
 			log_out("BMP280: Initialization failed\r\n", 0, 0, 0);
-		} else if (co2_sensor_init(&hi2c3)) {
-			get_init_result = 1;
-			log_out("CCS811: Initialization failed\r\n", 0, 0, 0);
+			// } else if (co2_sensor_init(&hi2c3)) {
+			// 	get_init_result = 1;
+			// 	log_out("CCS811: Initialization failed\r\n", 0, 0, 0);
 		} else {
 			get_init_result = 0;
 			log_out("BMP280: Start\r\n", 0, 2, 26);
 			log_out("AHT10: Start\r\n", 0, 2, 38);
-			log_out("CCS811: Start\r\n", 0, 2, 50);
+			// log_out("CCS811: Start\r\n", 0, 2, 50);
 		}
-		log_out("INITIALIZATION \r\nFINISHED\r\n", 0, 0, 76);
+		log_out("INITIALIZATION \r\nFINISHED\r\n", 0, 0, 50);
 
-		SIM800L_init();
+		// SIM800L_init();
 
-		HAL_Delay(2000);
+		// HAL_Delay(2000);
 		// SIM800L_send_sms("Data Logger init done", 22, "+380679488373", 14);
 		HAL_Delay(2000);
 	}
@@ -766,14 +772,14 @@ void sensor_working(void) {
 		log_out("Temperature: %u.%u C \r\n", average_temperature, 2, 26);
 	}
 
-	sprintf((char *)co2_read, (char *)get_co2_readings(&hi2c3));
+	// sprintf((char *)co2_read, (char *)get_co2_readings(&hi2c3));
 
-	uart_tx_size = sprintf((char *)uart_tx_data, "CO2: %u ppm \r\n", co2_read[0]);
-	ST7735_print_config(2, 38, (char *)uart_tx_data, ST7735_WHITE, ST7735_BLACK, 1, 1);
-	HAL_UART_Transmit(&huart1, uart_tx_data, uart_tx_size, 1000);
-	uart_tx_size = sprintf((char *)uart_tx_data, "TVOC: %u \r\n", co2_read[1]);
-	ST7735_print_config(2, 50, (char *)uart_tx_data, ST7735_WHITE, ST7735_BLACK, 1, 1);
-	HAL_UART_Transmit(&huart1, uart_tx_data, uart_tx_size, 1000);
+	// uart_tx_size = sprintf((char *)uart_tx_data, "CO2: %u ppm \r\n", co2_read[0]);
+	// ST7735_print_config(2, 38, (char *)uart_tx_data, ST7735_WHITE, ST7735_BLACK, 1, 1);
+	// HAL_UART_Transmit(&huart1, uart_tx_data, uart_tx_size, 1000);
+	// uart_tx_size = sprintf((char *)uart_tx_data, "TVOC: %u \r\n", co2_read[1]);
+	// ST7735_print_config(2, 50, (char *)uart_tx_data, ST7735_WHITE, ST7735_BLACK, 1, 1);
+	// HAL_UART_Transmit(&huart1, uart_tx_data, uart_tx_size, 1000);
 
 	HAL_ADC_Start(&hadc1);
 	HAL_ADC_PollForConversion(&hadc1, 1000);
@@ -786,7 +792,7 @@ void sensor_working(void) {
 	/* illuminance calc */
 	Pht_Lux = pow(10, Pht_Temp) * 5;
 	uart_tx_size = sprintf((char *)uart_tx_data, "Bright: %lu LUX \r\n", Pht_Lux);
-	ST7735_print_config(2, 62, (char *)uart_tx_data, ST7735_WHITE, ST7735_BLACK, 1, 1);
+	ST7735_print_config(2, 38, (char *)uart_tx_data, ST7735_WHITE, ST7735_BLACK, 1, 1);
 	osSemaphoreRelease(CO2_SemHandle);
 }
 
@@ -852,7 +858,7 @@ void StartmeasurementTask(void *argument) {
 	for (;;) {
 		ST7735_fill(ST7735_BLACK);
 		sensor_working();
-		osDelay(20000);
+		osDelay(2000);
 	}
 	/* USER CODE END StartmeasurementTask */
 }
@@ -871,38 +877,38 @@ void Start_co2_led_Task(void *argument) {
 	/* Infinite loop */
 	for (;;) {
 		if (Pht_Lux < 100) {
-			if (co2_read[0] < 600) {
-				Set_RGB_Color(250, 255, 200);   //Purple
-			}
-			if (co2_read[0] >= 600 && co2_read[0] < 1000) {
-				Set_RGB_Color(255, 200, 255);   //Dark green
-			}
-			if (co2_read[0] >= 1000 && co2_read[0] < 1500) {
-				Set_RGB_Color(245, 235, 255);   //Dark yellow
-			}
-			if (co2_read[0] >= 1500 && co2_read[0] < 2200) {
-				Set_RGB_Color(240, 235, 255);   //Dark orange
-			}
-			if (co2_read[0] >= 2200) {
+			// if (co2_read[0] < 600) {
+			// 	Set_RGB_Color(250, 255, 200);   //Purple
+			// }
+			// if (co2_read[0] >= 600 && co2_read[0] < 1000) {
+			// 	Set_RGB_Color(255, 200, 255);   //Dark green
+			// }
+			// if (co2_read[0] >= 1000 && co2_read[0] < 1500) {
+			// 	Set_RGB_Color(245, 235, 255);   //Dark yellow
+			// }
+			// if (co2_read[0] >= 1500 && co2_read[0] < 2200) {
+			// 	Set_RGB_Color(240, 235, 255);   //Dark orange
+			// }
+			// if (co2_read[0] >= 2200) {
 				Set_RGB_Color(210, 255, 255);   //Dark red
-			}
+			// }
 
 		} else {
-			if (co2_read[0] < 600) {
-				Set_RGB_Color(255, 255, 1);   //Blue
-			}
-			if (co2_read[0] >= 600 && co2_read[0] < 1000) {
-				Set_RGB_Color(255, 1, 255);   //Green
-			}
-			if (co2_read[0] >= 1000 && co2_read[0] < 1500) {
-				Set_RGB_Color(100, 10, 255);   //Yellow
-			}
-			if (co2_read[0] >= 1500 && co2_read[0] < 2200) {
-				Set_RGB_Color(60, 40, 255);
-			}
-			if (co2_read[0] >= 2200) {
+			// if (co2_read[0] < 600) {
+			// 	Set_RGB_Color(255, 255, 1);   //Blue
+			// }
+			// if (co2_read[0] >= 600 && co2_read[0] < 1000) {
+			// 	Set_RGB_Color(255, 1, 255);   //Green
+			// }
+			// if (co2_read[0] >= 1000 && co2_read[0] < 1500) {
+			// 	Set_RGB_Color(100, 10, 255);   //Yellow
+			// }
+			// if (co2_read[0] >= 1500 && co2_read[0] < 2200) {
+			// 	Set_RGB_Color(60, 40, 255);
+			// }
+			// if (co2_read[0] >= 2200) {
 				Set_RGB_Color(1, 255, 255);   //Red
-			}
+			// }
 		}
 		osDelay(1000);
 	}
