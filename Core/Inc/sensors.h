@@ -7,11 +7,11 @@
  * @details This enumeration describes different states for read operations from various sensors.
  */
 typedef enum {
-    READ_OK = 0,                /* Successful read operation. */
-    READ_HUMIDITY_ERR = -1,     /* Error reading humidity data. */
-    READ_PRESSURE_ERR = -2,     /* Error reading pressure data. */
-    READ_CO2_ERR = -3,          /* Error reading CO2 data. */
-    READ_TEMPERATURE_ERR = -40, /* Error reading temperature data. */
+	READ_OK = 0,                /* Successful read operation. */
+	READ_HUMIDITY_ERR = -1,     /* Error reading humidity data. */
+	READ_PRESSURE_ERR = -2,     /* Error reading pressure data. */
+	READ_CO2_ERR = -3,          /* Error reading CO2 data. */
+	READ_TEMPERATURE_ERR = -40, /* Error reading temperature data. */
 } read_state_t;
 
 /* This external array is used to store the results from different sensor readings. */
@@ -22,7 +22,7 @@ extern uint16_t res[2];
  * @details This function retrieves the current humidity reading from the humidity sensor.
  * @return The humidity reading as a floating-point value.
  */
-float get_humidity_readings(void); 
+float get_humidity_readings(void);
 
 /**
  * @brief Retrieves the pressure reading.
@@ -46,6 +46,8 @@ float get_temperature_readings(struct BMP280_HandleTypedef *device);
  * @param[in] _hi2c Pointer to the I2C object used for communication with the sensor.
  * @return Pointer to the CO2 reading value stored in a uint16_t array.
  */
-uint16_t* get_co2_readings(I2C_HandleTypeDef *_hi2c);
+uint16_t *get_co2_readings(I2C_HandleTypeDef *_hi2c);
+
+uint32_t calculate_brightness(ADC_HandleTypeDef *_hadc1);
 
 #endif /*__SENSOR_READINGS_H__*/

@@ -6,6 +6,7 @@
 /* Maximum buffer size for UART communication with SIM800L. */
 #define SIM800_UART_BUFFER_MAX_SIZE 512
 #define SIM800_UART                      huart2
+#define WITH_SIM 0
 
 /* UART handle for communication with SIM800L module. */
 extern UART_HandleTypeDef SIM800_UART;

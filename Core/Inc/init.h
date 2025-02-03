@@ -6,6 +6,7 @@
 #include "AHT10.h"
 #include "CCS811.h"
 #include "SIM800L.h"
+#include "GL5516.h"
 
 /* This structure defines the object for interacting with the BMP280 sensor using the `BMP280_HandleTypedef` type. */
 extern struct BMP280_HandleTypedef bmp280;
@@ -58,6 +59,8 @@ uint8_t co2_sensor_init(I2C_HandleTypeDef *_hi2c);
  * @details This function performs the initialization of the SIM800L modem and returns the status of the operation.
  * @return Status of the initialization: 0 if successful, or a non-zero value if an error occurred.
  */
-uint8_t sim_init(void);
+void sim_init(void);
+
+void brightness_init(ADC_HandleTypeDef *_hadc1);
 
 #endif /*__INIT_H__*/

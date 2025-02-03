@@ -4,10 +4,12 @@
 
 #include "ST7735.h"
 #include "ST7735_FONT.h"
+#include "cmsis_os.h"
 #include <stm32f4xx_hal.h>
 #include <stdlib.h>
 #include <stdint.h>
 
+extern osMutexId_t ScreenMutexHandle;
 /**
  * @brief Swaps two 16-bit integers.
  * @details Exchanges the values of two 16-bit integers.
@@ -44,7 +46,7 @@ const uint8_t Rcmd[] = {                // 7735R init, part 1 (red or green tab)
 		0x01, 0x2C, 0x2D,               //     Line inversion mode
 		ST7735_INVCTR, 1,               //  6: Display inversion control, 1 arg:
 		0x07,                           //     No inversion
-		ST7735_PWCTR1, 3,                           //  7: Power control, 3 args, no delay:
+		ST7735_PWCTR1, 3,               //  7: Power control, 3 args, no delay:
 		0xA2,                           //     Power settings
 		0x02,                           //     -4.6V
 		0x84,                           //     AUTO mode
@@ -152,15 +154,16 @@ static void ST7735_spi_send_com(uint8_t command) {
 
 	/* Start command transmission */
 	ST7735_start_command();
-	
+
 	/* Transmit command byte */
 	status = HAL_SPI_Transmit(&hspi2, &command, 1, 1000);
-	
+
 	/* Check transmission status */
 	if (status != HAL_OK) {
 		/* If transmission fails, enter an infinite loop */
-		while (1) {
+		while (status != HAL_OK) {
 			HAL_Delay(20); /* Delay to avoid rapid loop iteration */
+			status = HAL_SPI_Transmit(&hspi2, &command, 1, 1000);
 		}
 	}
 }
@@ -177,10 +180,10 @@ static void ST7735_spi_send_data(uint8_t *data, size_t size) {
 	if (size) {
 		/* Start data transmission */
 		ST7735_start_data();
-		
+
 		/* Transmit data bytes */
 		status = HAL_SPI_Transmit(&hspi2, data, size, 1000);
-		
+
 		/* Check transmission status */
 		if (status != HAL_OK) {
 			/* If transmission fails, enter an infinite loop */
@@ -206,7 +209,7 @@ static void ST7735_set_window(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
 
 	/* Prepare column address data */
 	uint8_t xa[4] = {x >> 8, x, (x + w - 1) >> 8, (x + w - 1)};
-	
+
 	/* Prepare row address data */
 	uint8_t ya[4] = {y >> 8, y, (y + h - 1) >> 8, (y + h - 1)};
 
@@ -223,318 +226,326 @@ static void ST7735_set_window(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
 }
 
 int ST7735_init(void) {
-    uint8_t num_commands, cmd, numArgs;
-    uint16_t ms;
+	uint8_t num_commands, cmd, numArgs;
+	uint16_t ms;
 
-    /* Pointer to the command list */
-    const uint8_t *ptr = Rcmd;
+	/* Pointer to the command list */
+	const uint8_t *ptr = Rcmd;
 
-    /* Set the reset pin high */
-    HAL_GPIO_WritePin(LCD_RESET_GPIO_Port, LCD_RESET_Pin, GPIO_PIN_SET);
-    HAL_Delay(100);
-    /* Set the reset pin low */
-    HAL_GPIO_WritePin(LCD_RESET_GPIO_Port, LCD_RESET_Pin, GPIO_PIN_RESET);
-    HAL_Delay(100);
-    /* Set the reset pin high again */
-    HAL_GPIO_WritePin(LCD_RESET_GPIO_Port, LCD_RESET_Pin, GPIO_PIN_SET);
-    HAL_Delay(100);
+	/* Set the reset pin high */
+	HAL_GPIO_WritePin(LCD_RESET_GPIO_Port, LCD_RESET_Pin, GPIO_PIN_SET);
+	HAL_Delay(100);
+	/* Set the reset pin low */
+	HAL_GPIO_WritePin(LCD_RESET_GPIO_Port, LCD_RESET_Pin, GPIO_PIN_RESET);
+	HAL_Delay(100);
+	/* Set the reset pin high again */
+	HAL_GPIO_WritePin(LCD_RESET_GPIO_Port, LCD_RESET_Pin, GPIO_PIN_SET);
+	HAL_Delay(100);
 
-    /* Read the number of commands to execute */
-    num_commands = *ptr++;
-    while (num_commands--) {
-        /* Read the command */
-        cmd = *ptr++;
-        /* Read the number of arguments for the command */
-        numArgs = *ptr++;
-        /* Check if a delay is needed */
-        ms = numArgs & ST_CMD_DELAY;
-        numArgs &= ~ST_CMD_DELAY;
-        /* Start writing to the display */
-        ST7735_start_write();
-        /* Send the command to the display */
-        ST7735_spi_send_com(cmd);
-        /* Send the arguments to the display */
-        ST7735_spi_send_data((uint8_t *)ptr, numArgs);
-        /* End writing to the display */
-        ST7735_end_write();
-        ptr += numArgs;
+	/* Read the number of commands to execute */
+	num_commands = *ptr++;
+	while (num_commands--) {
+		/* Read the command */
+		cmd = *ptr++;
+		/* Read the number of arguments for the command */
+		numArgs = *ptr++;
+		/* Check if a delay is needed */
+		ms = numArgs & ST_CMD_DELAY;
+		numArgs &= ~ST_CMD_DELAY;
+		/* Start writing to the display */
+		ST7735_start_write();
+		/* Send the command to the display */
+		ST7735_spi_send_com(cmd);
+		/* Send the arguments to the display */
+		ST7735_spi_send_data((uint8_t *)ptr, numArgs);
+		/* End writing to the display */
+		ST7735_end_write();
+		ptr += numArgs;
 
-        if (ms) {
-            /* Read the delay time */
-            ms = *ptr++;
-            if (ms == 255)
-                ms = 500;
-            HAL_Delay(ms);
-        }
-    }
+		if (ms) {
+			/* Read the delay time */
+			ms = *ptr++;
+			if (ms == 255)
+				ms = 500;
+			HAL_Delay(ms);
+		}
+	}
 
-    ST7735_start_write();
-    /* Set the display rotation */
-    ST7735_set_rotation(2);
-    ST7735_end_write();
+	ST7735_start_write();
+	/* Set the display rotation */
+	ST7735_set_rotation(2);
+	ST7735_end_write();
 
-    return 0;
+	return 0;
 }
 
 int ST7735_set_rotation(int m) {
-    uint8_t madctl = 0;
+	uint8_t madctl = 0;
 
-    /* Ensure rotation value is between 0 and 3 */
-    rotation = m & 3;
+	/* Ensure rotation value is between 0 and 3 */
+	rotation = m & 3;
 
-    switch (rotation) {
-        case 0:
-            /* Set MADCTL for rotation 0 */
-            madctl = ST77XX_MADCTL_MX | ST77XX_MADCTL_MY | ST77XX_MADCTL_RGB;
-            _height = ST7735_TFTHEIGHT_160;
-            _width = ST7735_TFTWIDTH_128;
-            _xstart = _colstart;
-            _ystart = _rowstart;
-            break;
-        case 1:
-            /* Set MADCTL for rotation 1 */
-            madctl = ST77XX_MADCTL_MY | ST77XX_MADCTL_MV | ST77XX_MADCTL_RGB;
-            _width = ST7735_TFTHEIGHT_160;
-            _height = ST7735_TFTWIDTH_128;
-            _ystart = _colstart;
-            _xstart = _rowstart;
-            break;
-        case 2:
-            /* Set MADCTL for rotation 2 */
-            madctl = ST77XX_MADCTL_RGB;
-            _height = ST7735_TFTHEIGHT_160;
-            _width = ST7735_TFTWIDTH_128;
-            _xstart = _colstart;
-            _ystart = _rowstart;
-            break;
-        case 3:
-            /* Set MADCTL for rotation 3 */
-            madctl = ST77XX_MADCTL_MX | ST77XX_MADCTL_MV | ST7735_MADCTL_BGR;
-            _width = ST7735_TFTHEIGHT_160;
-            _height = ST7735_TFTWIDTH_128;
-            _ystart = _colstart;
-            _xstart = _rowstart;
-            break;
-    }
+	switch (rotation) {
+		case 0:
+			/* Set MADCTL for rotation 0 */
+			madctl = ST77XX_MADCTL_MX | ST77XX_MADCTL_MY | ST77XX_MADCTL_RGB;
+			_height = ST7735_TFTHEIGHT_160;
+			_width = ST7735_TFTWIDTH_128;
+			_xstart = _colstart;
+			_ystart = _rowstart;
+			break;
+		case 1:
+			/* Set MADCTL for rotation 1 */
+			madctl = ST77XX_MADCTL_MY | ST77XX_MADCTL_MV | ST77XX_MADCTL_RGB;
+			_width = ST7735_TFTHEIGHT_160;
+			_height = ST7735_TFTWIDTH_128;
+			_ystart = _colstart;
+			_xstart = _rowstart;
+			break;
+		case 2:
+			/* Set MADCTL for rotation 2 */
+			madctl = ST77XX_MADCTL_RGB;
+			_height = ST7735_TFTHEIGHT_160;
+			_width = ST7735_TFTWIDTH_128;
+			_xstart = _colstart;
+			_ystart = _rowstart;
+			break;
+		case 3:
+			/* Set MADCTL for rotation 3 */
+			madctl = ST77XX_MADCTL_MX | ST77XX_MADCTL_MV | ST7735_MADCTL_BGR;
+			_width = ST7735_TFTHEIGHT_160;
+			_height = ST7735_TFTWIDTH_128;
+			_ystart = _colstart;
+			_xstart = _rowstart;
+			break;
+	}
 
-    /* Send the MADCTL command to the display */
-    ST7735_spi_send_com(ST77XX_MADCTL);
-    /* Send the MADCTL data to the display */
-    ST7735_spi_send_data(&madctl, 1);
-    return 0;
+	/* Send the MADCTL command to the display */
+	ST7735_spi_send_com(ST77XX_MADCTL);
+	/* Send the MADCTL data to the display */
+	ST7735_spi_send_data(&madctl, 1);
+	return 0;
 }
 
 void ST7735_pixel(int16_t x, int16_t y, uint16_t color) {
-    if ((x >= 0) && (x < _width) && (y >= 0) && (y < _height)) {
-        /* Start writing to the display */
-        ST7735_start_write();
-        /* Set the window to the pixel location */
-        ST7735_set_window(x, y, 1, 1);
-        /* Start data transmission */
-        ST7735_start_data();
-        uint8_t c[2] = {color >> 8, color};
-        /* Send the pixel color data */
-        ST7735_spi_send_data(c, 2);
-        /* End writing to the display */
-        ST7735_end_write();
-    }
+	osMutexAcquire(ScreenMutexHandle, osWaitForever);
+	if ((x >= 0) && (x < _width) && (y >= 0) && (y < _height)) {
+		/* Start writing to the display */
+		ST7735_start_write();
+		/* Set the window to the pixel location */
+		ST7735_set_window(x, y, 1, 1);
+		/* Start data transmission */
+		ST7735_start_data();
+		uint8_t c[2] = {color >> 8, color};
+		/* Send the pixel color data */
+		ST7735_spi_send_data(c, 2);
+		/* End writing to the display */
+		ST7735_end_write();
+	}
+	osMutexRelease(ScreenMutexHandle);
 }
 
 void ST7735_vline(uint16_t x, uint16_t y, uint16_t h, uint16_t color) {
-    /* Start writing to the display */
-    ST7735_start_write();
-    /* Set the window to the vertical line location */
-    ST7735_set_window(x, y, 1, h);
-    /* Start data transmission */
-    ST7735_start_data();
-    uint8_t c[2] = {color >> 8, color};
-    do
-        /* Send the line color data */
-        ST7735_spi_send_data(c, 2);
-    while (h--);
-    /* End writing to the display */
-    ST7735_end_write();
+	osMutexAcquire(ScreenMutexHandle, osWaitForever);
+	/* Start writing to the display */
+	ST7735_start_write();
+	/* Set the window to the vertical line location */
+	ST7735_set_window(x, y, 1, h);
+	/* Start data transmission */
+	ST7735_start_data();
+	uint8_t c[2] = {color >> 8, color};
+	do
+		/* Send the line color data */
+		ST7735_spi_send_data(c, 2);
+	while (h--);
+	/* End writing to the display */
+	ST7735_end_write();
+	osMutexRelease(ScreenMutexHandle);
 }
 
 void ST7735_hline(uint16_t x, uint16_t y, uint16_t w, uint16_t color) {
-    /* Start writing to the display */
-    ST7735_start_write();
-    /* Set the window to the horizontal line location */
-    ST7735_set_window(x, y, w, 1);
-    /* Start data transmission */
-    ST7735_start_data();
-    uint8_t c[2] = {color >> 8, color};
-    do
-        /* Send the line color data */
-        ST7735_spi_send_data(c, 2);
-    while (w--);
-    /* End writing to the display */
-    ST7735_end_write();
+	osMutexAcquire(ScreenMutexHandle, osWaitForever);
+	/* Start writing to the display */
+	ST7735_start_write();
+	/* Set the window to the horizontal line location */
+	ST7735_set_window(x, y, w, 1);
+	/* Start data transmission */
+	ST7735_start_data();
+	uint8_t c[2] = {color >> 8, color};
+	do
+		/* Send the line color data */
+		ST7735_spi_send_data(c, 2);
+	while (w--);
+	/* End writing to the display */
+	ST7735_end_write();
+	osMutexRelease(ScreenMutexHandle);
 }
 
 void ST7735_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
-    /* Draw the left vertical line of the rectangle */
-    ST7735_vline(x, y, h, color);
-    /* Draw the right vertical line of the rectangle */
-    ST7735_vline(x + w, y, h, color);
-    /* Draw the top horizontal line of the rectangle */
-    ST7735_hline(x, y, w, color);
-    /* Draw the bottom horizontal line of the rectangle */
-    ST7735_hline(x, y + h, w, color);
+	/* Draw the left vertical line of the rectangle */
+	ST7735_vline(x, y, h, color);
+	/* Draw the right vertical line of the rectangle */
+	ST7735_vline(x + w, y, h, color);
+	/* Draw the top horizontal line of the rectangle */
+	ST7735_hline(x, y, w, color);
+	/* Draw the bottom horizontal line of the rectangle */
+	ST7735_hline(x, y + h, w, color);
 }
 
 void ST7735_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
-    /* Ensure x is within bounds */
-    if (x < 0)
-        x = 0;
-    /* Ensure y is within bounds */
-    if (y < 0)
-        y = 0;
-    /* Adjust width if it goes beyond the display width */
-    if (x + w > _width)
-        w = _width - x;
-    /* Adjust height if it goes beyond the display height */
-    if (y + h > _height)
-        h = _height - y;
-    /* Start writing to the display */
-    ST7735_start_write();
-    /* Set the window to the rectangle location */
-    ST7735_set_window(x, y, w, h);
-    /* Color data for the rectangle */
-    uint8_t c[2] = {color >> 8, color};
-    uint32_t cnt = w * h;
-    while (cnt--)
-        /* Send the rectangle color data */
-        ST7735_spi_send_data(c, 2);
-    /* End writing to the display */
-    ST7735_end_write();
+	osMutexAcquire(ScreenMutexHandle, osWaitForever);
+	/* Ensure x is within bounds */
+	if (x < 0)
+		x = 0;
+	/* Ensure y is within bounds */
+	if (y < 0)
+		y = 0;
+	/* Adjust width if it goes beyond the display width */
+	if (x + w > _width)
+		w = _width - x;
+	/* Adjust height if it goes beyond the display height */
+	if (y + h > _height)
+		h = _height - y;
+	/* Start writing to the display */
+
+	ST7735_start_write();
+	/* Set the window to the rectangle location */
+	ST7735_set_window(x, y, w, h);
+	/* Color data for the rectangle */
+	uint8_t c[2] = {color >> 8, color};
+	uint32_t cnt = w * h;
+	while (cnt--)
+		/* Send the rectangle color data */
+		ST7735_spi_send_data(c, 2);
+	/* End writing to the display */
+	ST7735_end_write();
+	osMutexRelease(ScreenMutexHandle);
 }
 
 void ST7735_fill(uint16_t color) {
-    /* Fill the entire screen with the given color */
-    ST7735_fill_rect(0, 0, _width, _height, color);
+	/* Fill the entire screen with the given color */
+	ST7735_fill_rect(0, 0, _width, _height, color);
 }
 
 void ST7735_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color) {
-    /* Determine if the line is steep */
-    int16_t steep = abs(y1 - y0) > abs(x1 - x0);
-    if (steep) {
-        /* Swap x and y coordinates if the line is steep */
-        swap16(x0, y0);
-        swap16(x1, y1);
-    }
+	/* Determine if the line is steep */
+	int16_t steep = abs(y1 - y0) > abs(x1 - x0);
+	if (steep) {
+		/* Swap x and y coordinates if the line is steep */
+		swap16(x0, y0);
+		swap16(x1, y1);
+	}
 
-    if (x0 > x1) {
-        /* Ensure drawing from left to right */
-        swap16(x0, x1);
-        swap16(y0, y1);
-    }
+	if (x0 > x1) {
+		/* Ensure drawing from left to right */
+		swap16(x0, x1);
+		swap16(y0, y1);
+	}
 
-    int16_t dx, dy;
-    dx = x1 - x0;
-    dy = abs(y1 - y0);
+	int16_t dx, dy;
+	dx = x1 - x0;
+	dy = abs(y1 - y0);
 
-    /* Error term for Bresenham's algorithm */
-    int16_t err = dx / 2;
-    int16_t ystep;
+	/* Error term for Bresenham's algorithm */
+	int16_t err = dx / 2;
+	int16_t ystep;
 
-    /* Determine the direction of the step */
-    if (y0 < y1) {
-        ystep = 1;
-    } else {
-        ystep = -1;
-    }
+	/* Determine the direction of the step */
+	if (y0 < y1) {
+		ystep = 1;
+	} else {
+		ystep = -1;
+	}
 
-    /* Draw the line */
-    for (; x0 <= x1; x0++) {
-        if (steep) {
-            ST7735_pixel(y0, x0, color);
-        } else {
-            ST7735_pixel(x0, y0, color);
-        }
-        err -= dy;
-        if (err < 0) {
-            y0 += ystep;
-            err += dx;
-        }
-    }
+	/* Draw the line */
+	for (; x0 <= x1; x0++) {
+		if (steep) {
+			ST7735_pixel(y0, x0, color);
+		} else {
+			ST7735_pixel(x0, y0, color);
+		}
+		err -= dy;
+		if (err < 0) {
+			y0 += ystep;
+			err += dx;
+		}
+	}
 }
 
 void ST7735_circle(int16_t x0, int16_t y0, int16_t r, uint16_t color) {
-    /* Initial decision parameter for Bresenham's circle algorithm */
-    int16_t f = 1 - r;
-    int16_t ddF_x = 1;
-    int16_t ddF_y = -2 * r;
-    int16_t x = 0;
-    int16_t y = r;
+	/* Initial decision parameter for Bresenham's circle algorithm */
+	int16_t f = 1 - r;
+	int16_t ddF_x = 1;
+	int16_t ddF_y = -2 * r;
+	int16_t x = 0;
+	int16_t y = r;
 
-    /* Start writing to the display */
-    ST7735_start_write();
-    /* Draw the initial points */
-    ST7735_pixel(x0, y0 + r, color);
-    ST7735_pixel(x0, y0 - r, color);
-    ST7735_pixel(x0 + r, y0, color);
-    ST7735_pixel(x0 - r, y0, color);
+	/* Start writing to the display */
+	// ST7735_start_write();
+	/* Draw the initial points */
+	ST7735_pixel(x0, y0 + r, color);
+	ST7735_pixel(x0, y0 - r, color);
+	ST7735_pixel(x0 + r, y0, color);
+	ST7735_pixel(x0 - r, y0, color);
 
-    /* Draw the circle */
-    while (x < y) {
-        if (f >= 0) {
-            y--;
-            ddF_y += 2;
-            f += ddF_y;
-        }
-        x++;
-        ddF_x += 2;
-        f += ddF_x;
+	/* Draw the circle */
+	while (x < y) {
+		if (f >= 0) {
+			y--;
+			ddF_y += 2;
+			f += ddF_y;
+		}
+		x++;
+		ddF_x += 2;
+		f += ddF_x;
 
-        ST7735_pixel(x0 + x, y0 + y, color);
-        ST7735_pixel(x0 - x, y0 + y, color);
-        ST7735_pixel(x0 + x, y0 - y, color);
-        ST7735_pixel(x0 - x, y0 - y, color);
-        ST7735_pixel(x0 + y, y0 + x, color);
-        ST7735_pixel(x0 - y, y0 + x, color);
-        ST7735_pixel(x0 + y, y0 - x, color);
-        ST7735_pixel(x0 - y, y0 - x, color);
-    }
-    /* End writing to the display */
-    ST7735_end_write();
+		ST7735_pixel(x0 + x, y0 + y, color);
+		ST7735_pixel(x0 - x, y0 + y, color);
+		ST7735_pixel(x0 + x, y0 - y, color);
+		ST7735_pixel(x0 - x, y0 - y, color);
+		ST7735_pixel(x0 + y, y0 + x, color);
+		ST7735_pixel(x0 - y, y0 + x, color);
+		ST7735_pixel(x0 + y, y0 - x, color);
+		ST7735_pixel(x0 - y, y0 - x, color);
+	}
+	/* End writing to the display */
+	// ST7735_end_write();
 }
 
 void ST7735_fill_circle(int16_t x0, int16_t y0, int16_t r, uint16_t color) {
-    /* Initial decision parameter for Bresenham's circle algorithm */
-    int16_t f = 1 - r;
-    int16_t ddF_x = 1;
-    int16_t ddF_y = -2 * r;
-    int16_t x = 0;
-    int16_t y = r;
-    int16_t px = x;
-    int16_t py = y;
+	/* Initial decision parameter for Bresenham's circle algorithm */
+	int16_t f = 1 - r;
+	int16_t ddF_x = 1;
+	int16_t ddF_y = -2 * r;
+	int16_t x = 0;
+	int16_t y = r;
+	int16_t px = x;
+	int16_t py = y;
 
-    /* Draw the filled circle */
-    while (x < y) {
-        if (f >= 0) {
-            y--;
-            ddF_y += 2;
-            f += ddF_y;
-        }
-        x++;
-        ddF_x += 2;
-        f += ddF_x;
-        if (x < (y + 1)) {
-            ST7735_vline(x0 + x, y0 - y, 2 * y + 1, color);
-            ST7735_vline(x0 - x, y0 - y, 2 * y + 1, color);
-        }
-        if (y != py) {
-            ST7735_vline(x0 + py, y0 - px, 2 * px + 1, color);
-            ST7735_vline(x0 - py, y0 - px, 2 * px + 1, color);
-            py = y;
-        }
-        px = x;
-    }
-    /* Draw the central vertical line */
-    ST7735_vline(x0, y0 - r, 2 * r + 1, color);
+	/* Draw the filled circle */
+	while (x < y) {
+		if (f >= 0) {
+			y--;
+			ddF_y += 2;
+			f += ddF_y;
+		}
+		x++;
+		ddF_x += 2;
+		f += ddF_x;
+		if (x < (y + 1)) {
+			ST7735_vline(x0 + x, y0 - y, 2 * y + 1, color);
+			ST7735_vline(x0 - x, y0 - y, 2 * y + 1, color);
+		}
+		if (y != py) {
+			ST7735_vline(x0 + py, y0 - px, 2 * px + 1, color);
+			ST7735_vline(x0 - py, y0 - px, 2 * px + 1, color);
+			py = y;
+		}
+		px = x;
+	}
+	/* Draw the central vertical line */
+	ST7735_vline(x0, y0 - r, 2 * r + 1, color);
 }
-
 
 void ST7735_set_text_color(uint16_t color) {
 	textcolor = color;
@@ -544,8 +555,9 @@ void ST7735_set_text_bg_color(uint16_t color) {
 	textbgcolor = color;
 }
 
-void ST7735_char(int16_t x, int16_t y, unsigned char c, uint16_t color, uint16_t bg, uint8_t size_x, uint8_t size_y) {
-    /* Return if character is completely off-screen */
+void ST7735_char(int16_t x, int16_t y, unsigned char c, uint16_t color, uint16_t bg, uint8_t size_x,
+		uint8_t size_y) {
+	/* Return if character is completely off-screen */
 	if ((x >= _width) || (y >= _height) || ((x + 6 * size_x - 1) < 0) || ((y + 8 * size_y - 1) < 0))
 		return;
 
@@ -553,7 +565,7 @@ void ST7735_char(int16_t x, int16_t y, unsigned char c, uint16_t color, uint16_t
 	if (c >= 176)
 		c++;
 
-	ST7735_start_write();
+	// ST7735_start_write();
 	/* Draw each column of the character */
 	for (int8_t i = 0; i < 5; i++) {
 		uint8_t line = font[c * 5 + i];
@@ -581,63 +593,67 @@ void ST7735_char(int16_t x, int16_t y, unsigned char c, uint16_t color, uint16_t
 		else
 			ST7735_fill_rect(x + 5 * size_x, y, size_x, 8 * size_y, bg);
 	}
-	ST7735_end_write();
+	// ST7735_end_write();
 }
 
 void ST7735_putchar(char c) {
-    /* Handle new line character by moving cursor to the start of the next line */
+	/* Handle new line character by moving cursor to the start of the next line */
 	if (c == '\n') {
 		cursor_x = 0;
 		cursor_y += textsize_y * 8;
-	} else if (c != '\r') {  /* Handle carriage return (ignore) */
-        /* Wrap text if it reaches the end of the display width */
+	} else if (c != '\r') { /* Handle carriage return (ignore) */
+							/* Wrap text if it reaches the end of the display width */
 		if (wrap && ((cursor_x + textsize_x * 6) > _width)) {
 			cursor_x = 0;
 			cursor_y += textsize_y * 8;
 		}
-        /* Draw the character at the current cursor position */
+		/* Draw the character at the current cursor position */
 		ST7735_char(cursor_x, cursor_y, c, textcolor, textbgcolor, textsize_x, textsize_y);
-        /* Move cursor to the right for the next character */
+		/* Move cursor to the right for the next character */
 		cursor_x += textsize_x * 6;
 	}
 }
 
 void ST7735_print(char *text) {
-    /* Loop through each character in the text and print it */
+	/* Loop through each character in the text and print it */
 	while (*text) {
 		ST7735_putchar(*text++);
 	}
-    /* Reset cursor position after printing the text */
+	/* Reset cursor position after printing the text */
 	cursor_x = 0;
 	cursor_y = 0;
 }
 
-void ST7735_putchar_config(int16_t x, int16_t y, char c, uint16_t color, uint16_t bg, uint8_t size_x, uint8_t size_y) {
-    /* Handle new line character by moving to the next line */
+void ST7735_putchar_config(int16_t x, int16_t y, char c, uint16_t color, uint16_t bg,
+		uint8_t size_x, uint8_t size_y) {
+	/* Handle new line character by moving to the next line */
 	if (c == '\n') {
 		x = 0;
 		y += size_y * 8;
-	} else if (c != '\r') {  /* Handle carriage return (ignore) */
-        /* Wrap text if it reaches the end of the display width */
+	} else if (c != '\r') { /* Handle carriage return (ignore) */
+							/* Wrap text if it reaches the end of the display width */
 		if (wrap && ((x + size_x * 6) > _width)) {
 			x = 0;
 			y += size_y * 8;
 		}
-        /* Draw the character at the specified position */
+		/* Draw the character at the specified position */
 		ST7735_char(x, y, c, color, bg, size_x, size_y);
-        /* Move to the right for the next character */
+		/* Move to the right for the next character */
 		x += size_x * 6;
 	}
 }
 
-void ST7735_print_config(int16_t x, int16_t y, char *text, uint16_t color, uint16_t bg, uint8_t size_x, uint8_t size_y) {
-    /* Set the cursor position and text properties */
+void ST7735_print_config(int16_t x, int16_t y, char *text, uint16_t color, uint16_t bg,
+		uint8_t size_x, uint8_t size_y) {
+	/* Set the cursor position and text properties */
 	cursor_x = x;
 	cursor_y = y;
 	textcolor = color;
 	textbgcolor = bg;
 	textsize_x = size_x;
 	textsize_y = size_y;
-    /* Print the text using the specified configuration */
+	/* Print the text using the specified configuration */
+	// osMutexAcquire(ScreenMutexHandle, 0);
 	ST7735_print(text);
+	// osMutexRelease(ScreenMutexHandle);
 }

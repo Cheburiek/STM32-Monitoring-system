@@ -71,6 +71,9 @@ void Error_Handler(void);
 #define BLUE_BUTTON_Pin GPIO_PIN_5
 #define BLUE_BUTTON_GPIO_Port GPIOE
 #define BLUE_BUTTON_EXTI_IRQn EXTI9_5_IRQn
+#define RED_BUTTON_Pin GPIO_PIN_6
+#define RED_BUTTON_GPIO_Port GPIOE
+#define RED_BUTTON_EXTI_IRQn EXTI9_5_IRQn
 #define SIM_TX_Pin GPIO_PIN_2
 #define SIM_TX_GPIO_Port GPIOA
 #define SIM_RX_Pin GPIO_PIN_3

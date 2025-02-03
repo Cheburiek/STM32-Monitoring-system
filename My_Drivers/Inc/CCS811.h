@@ -7,6 +7,7 @@
 
 #include "stm32f4xx_hal.h"
 #include <stdint.h>
+#define WITH_CCS 0
 
 /* I2C address for the CCS811 sensor, shifted left for 7-bit addressing. */
 #define CCS811_ADDRESS         (0x5Au) << 1u  

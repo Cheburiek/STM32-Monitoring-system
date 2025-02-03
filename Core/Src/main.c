@@ -22,10 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
-#include <math.h>
-#include "sensor_readings.h"
-#include "SIM800L.h"
+#include "common.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -49,6 +46,8 @@ ADC_HandleTypeDef hadc1;
 I2C_HandleTypeDef hi2c1;
 I2C_HandleTypeDef hi2c2;
 I2C_HandleTypeDef hi2c3;
+
+RTC_HandleTypeDef hrtc;
 
 SPI_HandleTypeDef hspi2;
 
@@ -79,12 +78,19 @@ const osThreadAttr_t measurementTask_attributes = {
 		.stack_size = 512 * 4,
 		.priority = (osPriority_t)osPriorityNormal,
 };
-/* Definitions for co2_led_Task */
-osThreadId_t co2_led_TaskHandle;
-const osThreadAttr_t co2_led_Task_attributes = {
-		.name = "co2_led_Task",
+/* Definitions for led_Task */
+osThreadId_t led_TaskHandle;
+const osThreadAttr_t led_Task_attributes = {
+		.name = "led_Task",
 		.stack_size = 128 * 4,
 		.priority = (osPriority_t)osPriorityLow,
+};
+/* Definitions for barrierControlT */
+osThreadId_t barrierControlTHandle;
+const osThreadAttr_t barrierControlT_attributes = {
+		.name = "barrierControlT",
+		.stack_size = 128 * 4,
+		.priority = (osPriority_t)osPriorityNormal,
 };
 /* Definitions for ScreenMutex */
 osMutexId_t ScreenMutexHandle;
@@ -93,20 +99,8 @@ const osMutexAttr_t ScreenMutex_attributes = {.name = "ScreenMutex"};
 osSemaphoreId_t CO2_SemHandle;
 const osSemaphoreAttr_t CO2_Sem_attributes = {.name = "CO2_Sem"};
 /* USER CODE BEGIN PV */
-uint16_t uart_tx_size;
-uint8_t uart_tx_data[256];
-uint8_t breaker = 1;
-
-uint32_t Pht_R;
-float Pht_Div;
-float Pht_Temp;
-uint32_t Pht_Lux;
+extern bool menu, tmp, hum, ok;
 osStatus_t status;
-uint16_t co2_read[2];
-#define PHT_UP_R   1000.0F
-#define PHT_10LX_R 10000.0F
-#define PHT_GAMMA  0.5F
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -121,33 +115,20 @@ static void MX_I2C3_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
+static void MX_RTC_Init(void);
 void StartDefaultTask(void *argument);
 void StartmenuTask(void *argument);
 void StartmeasurementTask(void *argument);
-void Start_co2_led_Task(void *argument);
+void Start_led_Task(void *argument);
+void StartbarrierControlTask(void *argument);
 
 /* USER CODE BEGIN PFP */
-static void sensor_init(void);
-static void sensor_working(void);
-static void log_out(const char *format, unsigned int args, uint8_t x, uint8_t y);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-uint16_t readValue;
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-	if (huart->Instance == huart2.Instance) {
-		SIM800L_uart_callback();
-	}
-}
-
-void Set_RGB_Color(uint16_t red, uint16_t green, uint16_t blue) {
-	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, red);
-	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, green);
-	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, blue);
-}
 /* USER CODE END 0 */
 
 /**
@@ -186,6 +167,7 @@ int main(void) {
 	MX_ADC1_Init();
 	MX_TIM3_Init();
 	MX_TIM4_Init();
+	MX_RTC_Init();
 	/* USER CODE BEGIN 2 */
 
 	sensor_init();
@@ -230,8 +212,11 @@ int main(void) {
 	/* creation of measurementTask */
 	measurementTaskHandle = osThreadNew(StartmeasurementTask, NULL, &measurementTask_attributes);
 
-	/* creation of co2_led_Task */
-	co2_led_TaskHandle = osThreadNew(Start_co2_led_Task, NULL, &co2_led_Task_attributes);
+	/* creation of led_Task */
+	led_TaskHandle = osThreadNew(Start_led_Task, NULL, &led_Task_attributes);
+
+	/* creation of barrierControlT */
+	barrierControlTHandle = osThreadNew(StartbarrierControlTask, NULL, &barrierControlT_attributes);
 
 	/* USER CODE BEGIN RTOS_THREADS */
 
@@ -272,13 +257,13 @@ void SystemClock_Config(void) {
 	/** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-	RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-	RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI | RCC_OSCILLATORTYPE_HSE;
+	RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+	RCC_OscInitStruct.LSIState = RCC_LSI_ON;
 	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
 	RCC_OscInitStruct.PLL.PLLM = 8;
-	RCC_OscInitStruct.PLL.PLLN = 168;
+	RCC_OscInitStruct.PLL.PLLN = 336;
 	RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
 	RCC_OscInitStruct.PLL.PLLQ = 4;
 	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
@@ -434,6 +419,81 @@ static void MX_I2C3_Init(void) {
 	/* USER CODE BEGIN I2C3_Init 2 */
 
 	/* USER CODE END I2C3_Init 2 */
+}
+
+/**
+  * @brief RTC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_RTC_Init(void) {
+	/* USER CODE BEGIN RTC_Init 0 */
+
+	/* USER CODE END RTC_Init 0 */
+
+	RTC_TimeTypeDef sTime = {0};
+	RTC_DateTypeDef sDate = {0};
+	RTC_AlarmTypeDef sAlarm = {0};
+
+	/* USER CODE BEGIN RTC_Init 1 */
+
+	/* USER CODE END RTC_Init 1 */
+
+	/** Initialize RTC Only
+  */
+	hrtc.Instance = RTC;
+	hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
+	hrtc.Init.AsynchPrediv = 127;
+	hrtc.Init.SynchPrediv = 255;
+	hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
+	hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
+	hrtc.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
+	if (HAL_RTC_Init(&hrtc) != HAL_OK) {
+		Error_Handler();
+	}
+
+	/* USER CODE BEGIN Check_RTC_BKUP */
+
+	/* USER CODE END Check_RTC_BKUP */
+
+	/** Initialize RTC and set the Time and Date
+  */
+	sTime.Hours = 0x0;
+	sTime.Minutes = 0x0;
+	sTime.Seconds = 0x1;
+	sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+	sTime.StoreOperation = RTC_STOREOPERATION_RESET;
+	if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK) {
+		Error_Handler();
+	}
+	sDate.WeekDay = RTC_WEEKDAY_MONDAY;
+	sDate.Month = RTC_MONTH_JANUARY;
+	sDate.Date = 0x1;
+	sDate.Year = 0x0;
+
+	if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK) {
+		Error_Handler();
+	}
+
+	/** Enable the Alarm A
+  */
+	sAlarm.AlarmTime.Hours = 0x0;
+	sAlarm.AlarmTime.Minutes = 0x0;
+	sAlarm.AlarmTime.Seconds = 0x0;
+	sAlarm.AlarmTime.SubSeconds = 0x0;
+	sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+	sAlarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
+	sAlarm.AlarmMask = RTC_ALARMMASK_DATEWEEKDAY | RTC_ALARMMASK_HOURS | RTC_ALARMMASK_MINUTES;
+	sAlarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
+	sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;
+	sAlarm.AlarmDateWeekDay = 0x1;
+	sAlarm.Alarm = RTC_ALARM_A;
+	if (HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK) {
+		Error_Handler();
+	}
+	/* USER CODE BEGIN RTC_Init 2 */
+
+	/* USER CODE END RTC_Init 2 */
 }
 
 /**
@@ -660,8 +720,10 @@ static void MX_GPIO_Init(void) {
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(CO2_WAK_GPIO_Port, CO2_WAK_Pin, GPIO_PIN_RESET);
 
-	/*Configure GPIO pins : GREEN_BUTTON_Pin YELLOW_BUTTON_Pin BLACK_BUTTON_Pin BLUE_BUTTON_Pin */
-	GPIO_InitStruct.Pin = GREEN_BUTTON_Pin | YELLOW_BUTTON_Pin | BLACK_BUTTON_Pin | BLUE_BUTTON_Pin;
+	/*Configure GPIO pins : GREEN_BUTTON_Pin YELLOW_BUTTON_Pin BLACK_BUTTON_Pin BLUE_BUTTON_Pin
+                           RED_BUTTON_Pin */
+	GPIO_InitStruct.Pin = GREEN_BUTTON_Pin | YELLOW_BUTTON_Pin | BLACK_BUTTON_Pin |
+						  BLUE_BUTTON_Pin | RED_BUTTON_Pin;
 	GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
@@ -705,104 +767,11 @@ static void MX_GPIO_Init(void) {
 }
 
 /* USER CODE BEGIN 4 */
-static void log_out(const char *format, unsigned int args, uint8_t x, uint8_t y) {
-	if (args) {
-		uart_tx_size = sprintf((char *)uart_tx_data, format, (args / 100), (args % 100));
-		ST7735_print_config(x, y, (char *)uart_tx_data, ST77XX_WHITE, ST77XX_BLACK, 1, 1);
-	} else {
-		uart_tx_size = sprintf((char *)uart_tx_data, format);
-		ST7735_print_config(x, y, (char *)uart_tx_data, ST77XX_WHITE, ST77XX_BLACK, 1, 1);
-	}
-	HAL_UART_Transmit(&huart1, uart_tx_data, uart_tx_size, 1000);
-}
-
-static void sensor_init(void) {
-	uint8_t get_init_result = 1;
-	tft_display_init();
-	log_out("INITIALIZATION \r\nSTARTED\r\n", 0, 0, 2);
-	while (get_init_result) {
-		if (humidity_sensor_init(&hi2c1)) {
-			get_init_result = 1;
-			log_out("AHT10: Initialization failed\r\n", 0, 0, 0);
-		} else if (barometr_sensor_init(&hi2c2)) {
-			get_init_result = 1;
-			log_out("BMP280: Initialization failed\r\n", 0, 0, 0);
-			// } else if (co2_sensor_init(&hi2c3)) {
-			// 	get_init_result = 1;
-			// 	log_out("CCS811: Initialization failed\r\n", 0, 0, 0);
-		} else {
-			get_init_result = 0;
-			log_out("BMP280: Start\r\n", 0, 2, 26);
-			log_out("AHT10: Start\r\n", 0, 2, 38);
-			// log_out("CCS811: Start\r\n", 0, 2, 50);
-		}
-		log_out("INITIALIZATION \r\nFINISHED\r\n", 0, 0, 50);
-
-		// SIM800L_init();
-
-		// HAL_Delay(2000);
-		// SIM800L_send_sms("Data Logger init done", 22, "+380679488373", 14);
-		HAL_Delay(2000);
-	}
-}
-
-void sensor_working(void) {
-	float bmp280_pressure = 0;
-	float average_temperature = 0;
-	float aht10_humidity = 0;
-
-	aht10_humidity = get_humidity_readings();
-	if (aht10_humidity < 0) {
-		log_out("Humidity reading failed\r\n", 0, 0, 0);
-	} else {
-		log_out("Humidity: %u.%u %% \r\n", aht10_humidity, 2, 2);
-	}
-
-	bmp280_pressure = get_pressure_readings(&bmp280);
-	if (bmp280_pressure < 0) {
-		log_out("Pressure reading failed\r\n", 0, 0, 0);
-	} else {
-		log_out("Pressure: %u.%u mmHg \r\n", (unsigned int)bmp280_pressure, 2, 14);
-	}
-
-	average_temperature = get_temperature_readings(&bmp280);
-	if (average_temperature <= -40) {
-		log_out("Temperature reading failed\r\n", 0, 0, 0);
-	} else {
-		log_out("Temperature: %u.%u C \r\n", average_temperature, 2, 26);
-	}
-
-	// sprintf((char *)co2_read, (char *)get_co2_readings(&hi2c3));
-
-	// uart_tx_size = sprintf((char *)uart_tx_data, "CO2: %u ppm \r\n", co2_read[0]);
-	// ST7735_print_config(2, 38, (char *)uart_tx_data, ST7735_WHITE, ST7735_BLACK, 1, 1);
-	// HAL_UART_Transmit(&huart1, uart_tx_data, uart_tx_size, 1000);
-	// uart_tx_size = sprintf((char *)uart_tx_data, "TVOC: %u \r\n", co2_read[1]);
-	// ST7735_print_config(2, 50, (char *)uart_tx_data, ST7735_WHITE, ST7735_BLACK, 1, 1);
-	// HAL_UART_Transmit(&huart1, uart_tx_data, uart_tx_size, 1000);
-
-	HAL_ADC_Start(&hadc1);
-	HAL_ADC_PollForConversion(&hadc1, 1000);
-	readValue = HAL_ADC_GetValue(&hadc1);
-
-	Pht_R = ((PHT_UP_R) / (4095.0 / readValue - 1));
-	// /* internim calcs */
-	Pht_Div = PHT_10LX_R / Pht_R;
-	Pht_Temp = ((0.42 * log(Pht_Div)) / (PHT_GAMMA)) + 1;
-	/* illuminance calc */
-	Pht_Lux = pow(10, Pht_Temp) * 5;
-	uart_tx_size = sprintf((char *)uart_tx_data, "Bright: %lu LUX \r\n", Pht_Lux);
-	ST7735_print_config(2, 38, (char *)uart_tx_data, ST7735_WHITE, ST7735_BLACK, 1, 1);
-	osSemaphoreRelease(CO2_SemHandle);
-}
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-	if (GPIO_Pin == GREEN_BUTTON_Pin) {
-		breaker = true;
-	}
-	if (GPIO_Pin == BLUE_BUTTON_Pin) {
-		breaker = false;
-	}
+	// if (GPIO_Pin < sizeof(buttonHandlers) / sizeof(ButtonHandler) && buttonHandlers[GPIO_Pin]) {
+	buttonHandlers[GPIO_Pin]();
+	// }
 }
 
 /* USER CODE END 4 */
@@ -834,13 +803,10 @@ void StartmenuTask(void *argument) {
 	/* USER CODE BEGIN StartmenuTask */
 	/* Infinite loop */
 	for (;;) {
-		if (breaker) {
-			HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
-		} else {
-			HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+		if (menu && !hum && !tmp) {
+			menu_func();
 		}
-
-		osDelay(1000);
+		osDelay(100);
 	}
 	/* USER CODE END StartmenuTask */
 }
@@ -856,63 +822,48 @@ void StartmeasurementTask(void *argument) {
 	/* USER CODE BEGIN StartmeasurementTask */
 	/* Infinite loop */
 	for (;;) {
-		ST7735_fill(ST7735_BLACK);
-		sensor_working();
-		osDelay(2000);
+		if (!menu) {
+			sensor_working();
+		}
+		osDelay(100);
 	}
 	/* USER CODE END StartmeasurementTask */
 }
 
-/* USER CODE BEGIN Header_Start_co2_led_Task */
+/* USER CODE BEGIN Header_Start_led_Task */
 /**
-* @brief Function implementing the co2_led_Task thread.
+* @brief Function implementing the led_Task thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_Start_co2_led_Task */
-void Start_co2_led_Task(void *argument) {
-	/* USER CODE BEGIN Start_co2_led_Task */
+/* USER CODE END Header_Start_led_Task */
+void Start_led_Task(void *argument) {
+	/* USER CODE BEGIN Start_led_Task */
 	status = osSemaphoreAcquire(CO2_SemHandle, osWaitForever);
 
 	/* Infinite loop */
 	for (;;) {
-		if (Pht_Lux < 100) {
-			// if (co2_read[0] < 600) {
-			// 	Set_RGB_Color(250, 255, 200);   //Purple
-			// }
-			// if (co2_read[0] >= 600 && co2_read[0] < 1000) {
-			// 	Set_RGB_Color(255, 200, 255);   //Dark green
-			// }
-			// if (co2_read[0] >= 1000 && co2_read[0] < 1500) {
-			// 	Set_RGB_Color(245, 235, 255);   //Dark yellow
-			// }
-			// if (co2_read[0] >= 1500 && co2_read[0] < 2200) {
-			// 	Set_RGB_Color(240, 235, 255);   //Dark orange
-			// }
-			// if (co2_read[0] >= 2200) {
-				Set_RGB_Color(210, 255, 255);   //Dark red
-			// }
-
-		} else {
-			// if (co2_read[0] < 600) {
-			// 	Set_RGB_Color(255, 255, 1);   //Blue
-			// }
-			// if (co2_read[0] >= 600 && co2_read[0] < 1000) {
-			// 	Set_RGB_Color(255, 1, 255);   //Green
-			// }
-			// if (co2_read[0] >= 1000 && co2_read[0] < 1500) {
-			// 	Set_RGB_Color(100, 10, 255);   //Yellow
-			// }
-			// if (co2_read[0] >= 1500 && co2_read[0] < 2200) {
-			// 	Set_RGB_Color(60, 40, 255);
-			// }
-			// if (co2_read[0] >= 2200) {
-				Set_RGB_Color(1, 255, 255);   //Red
-			// }
-		}
+		led_func();
 		osDelay(1000);
 	}
-	/* USER CODE END Start_co2_led_Task */
+	/* USER CODE END Start_led_Task */
+}
+
+/* USER CODE BEGIN Header_StartbarrierControlTask */
+/**
+* @brief Function implementing the barrierControlT thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartbarrierControlTask */
+void StartbarrierControlTask(void *argument) {
+	/* USER CODE BEGIN StartbarrierControlTask */
+	/* Infinite loop */
+	for (;;) {
+		barrier_ctrl_func();
+		osDelay(100);
+	}
+	/* USER CODE END StartbarrierControlTask */
 }
 
 /**
