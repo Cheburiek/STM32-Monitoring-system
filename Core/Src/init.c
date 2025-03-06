@@ -42,7 +42,3 @@ uint8_t co2_sensor_init(I2C_HandleTypeDef *_hi2c) {
 		return INIT_OK; /* Return success status if initialization succeeds */
 	}
 }
-
-void sim_init() {
-	SIM800L_init();
-}

@@ -10,7 +10,7 @@
 #define DATA_BYTE_2_SHIFT       8    /* Shift amount for combining bytes to form TVOC value */
 #define BIT_CHECK_MASK          1    /* Mask for checking a single bit */
 #define BYTE_SHIFT_8            8    /* Number of bits to shift for combining bytes */
-#define STATUS_BIT_3            3 	 /* Bit position for checking data availability in the status register */
+#define STATUS_BIT_3            3 /* Bit position for checking data availability in the status register */
 
 /* Define constants for CCS811 sensor */
 #define TIMEOUT                50 /* Timeout for I2C operations in milliseconds */
@@ -38,9 +38,9 @@ uint8_t CCS811_init(I2C_HandleTypeDef *hi2c) {
 	if ((check_firmware & FIRMWARE_ERROR_BIT_MASK) == HAL_OK) {
 		/* Send application start command to the sensor */
 		HAL_I2C_Master_Transmit(hi2c, CCS811_ADDRESS, &app_start, 1, TIMEOUT);
-		uint8_t meas_mode = CCS811_MEAS_MODE;
+		uint8_t meas_mode = CCS811_MEAS_MODE_1;
 		/* Set the measurement mode of the sensor */
-		HAL_I2C_Mem_Write(hi2c, CCS811_ADDRESS, CCS811_MEAS_MODE, 1, &meas_mode, 1, TIMEOUT);
+		HAL_I2C_Mem_Write(hi2c, CCS811_ADDRESS, CCS811_MEAS_MODE_REG, 1, &meas_mode, 1, TIMEOUT);
 		return HAL_OK; /* Return success if initialization is complete */
 	} else {
 		return HAL_ERROR; /* Return error if initialization failed */
@@ -50,9 +50,11 @@ uint8_t CCS811_init(I2C_HandleTypeDef *hi2c) {
 uint8_t CCS811_alg_read_data(I2C_HandleTypeDef *hi2c, uint16_t *co2, uint16_t *tvoc) {
 	uint8_t received_data[4];
 	uint8_t status_register = 0u;
+	uint8_t meas_mode;
 
 	/* Read the status register to check if data is ready */
 	HAL_I2C_Mem_Read(hi2c, CCS811_ADDRESS, CCS811_STATUS, 1, &status_register, 1, TIMEOUT);
+	HAL_I2C_Mem_Read(hi2c, CCS811_ADDRESS, 0x01, 1, &meas_mode, 1, TIMEOUT);
 	/* Check if data is available */
 	if ((status_register >> STATUS_BIT_3 & BIT_CHECK_MASK) == 1) {
 		/* Read data from the sensor */

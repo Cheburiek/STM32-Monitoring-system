@@ -29,7 +29,6 @@ float get_temperature_readings(struct BMP280_HandleTypedef *dev) {
 	}
 	/* Calculate the average temperature from both sensors */
 	bmp280_temperature = (aht10_temperature + bmp280_temperature) / 2;
-	bmp280_temperature *= 100; /* Convert temperature to desired scale */
 	return bmp280_temperature; /* Return the temperature reading */
 }
 

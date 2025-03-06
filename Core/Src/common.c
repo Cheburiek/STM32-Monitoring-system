@@ -12,26 +12,23 @@ extern ADC_HandleTypeDef hadc1;
 extern I2C_HandleTypeDef hi2c1;
 extern I2C_HandleTypeDef hi2c2;
 extern I2C_HandleTypeDef hi2c3;
-
-extern RTC_HandleTypeDef hrtc;
-
-extern SPI_HandleTypeDef hspi2;
-
 extern TIM_HandleTypeDef htim3;
 extern TIM_HandleTypeDef htim4;
-
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
 
-uint16_t hum_get;
-int16_t tmp_get;
+uint16_t hum_get = 0;
+int16_t tmp_get = 0;
+uint16_t pressure_get = 0;
 uint16_t uart_tx_size;
 uint8_t uart_tx_data[256];
-bool menu = 0, tmp = 0, hum = 0, ok = 0;
+bool menu = false, tmp = false, hum = false, ok = false;
 uint8_t hum_min = 30, hum_max = 60, tmp_min = 22, tmp_max = 26;
 uint32_t brightness;
 uint8_t barrier = 1;
-uint16_t co2_read[2];
+uint16_t co2_avg_sum = 0;
+uint16_t tvoc_avg_sum = 0;
+uint8_t avg_cnt = 0;
 
 typedef void (*ButtonHandler)(void);
 
@@ -87,74 +84,63 @@ void sensor_init(void) {
 	while (get_init_result) {
 		if (humidity_sensor_init(&hi2c1)) {
 			get_init_result = 1;
-			log_out("AHT10: Initialization failed\r\n", 0, 0, 0);
+			log_out("AHT10: Initialization failed\r\n", 0, 2, 26);
 		} else if (barometr_sensor_init(&hi2c2)) {
 			get_init_result = 1;
-			log_out("BMP280: Initialization failed\r\n", 0, 0, 0);
-#if WITH_CCS
+			log_out("BMP280: Initialization failed\r\n", 0, 2, 38);
 		} else if (co2_sensor_init(&hi2c3)) {
 			get_init_result = 1;
-			log_out("CCS811: Initialization failed\r\n", 0, 0, 0);
-#endif
+			log_out("CCS811: Initialization failed\r\n", 0, 2, 50);
+
 		} else {
 			get_init_result = 0;
 			log_out("BMP280: Start\r\n", 0, 2, 26);
 			log_out("AHT10: Start\r\n", 0, 2, 38);
-#if WITH_CCS
 			log_out("CCS811: Start\r\n", 0, 2, 50);
-#endif
 		}
-		log_out("INITIALIZATION \r\nFINISHED\r\n", 0, 0, 50);
-#if WITH_SIM
-		SIM800L_init();
-		HAL_Delay(2000);
-		SIM800L_send_sms("Data Logger init done", 22, "+380679488373", 14);
-#endif
+		log_out("INITIALIZATION \r\nFINISHED\r\n", 0, 0, 62);
 		HAL_Delay(2000);
 	}
 }
 
 void sensor_working(void) {
+	uint16_t co2_tvoc_read[2] = {0};
+	hum_get = (get_humidity_readings() / 100);
+	pressure_get = (get_pressure_readings(&bmp280) / 100);
+	tmp_get = (get_temperature_readings(&bmp280));
+	sprintf((char *)co2_tvoc_read, (char *)get_co2_readings(&hi2c3));
+	if (avg_cnt < 10) {
+		co2_avg_sum += co2_tvoc_read[0];
+		tvoc_avg_sum += co2_tvoc_read[1];
+		avg_cnt++;
+	}
+	brightness = calculate_brightness(&hadc1);
+}
+
+void sensor_out(void) {
 	osDelay(10);
 	ST7735_fill(ST7735_BLACK);
-	uint16_t pressure_get = 0;
-	uint16_t co2_get __attribute__((unused));
-
-	hum_get = (get_humidity_readings() / 100);
 	if (hum_get < 0) {
 		log_out("Humidity reading failed\r\n", 0, 2, 2);
 	} else {
 		log_out("Humidity: %u %% \r\n", hum_get, 2, 2);
 	}
-
-	pressure_get = (get_pressure_readings(&bmp280) / 100);
 	if (pressure_get < 0) {
 		log_out("Pressure reading failed\r\n", 0, 2, 14);
 	} else {
 		log_out("Pressure: %u mmHg \r\n", (unsigned int)pressure_get, 2, 14);
 	}
-
-	tmp_get = (get_temperature_readings(&bmp280) / 100);
 	if (tmp_get <= -40) {
 		log_out("Temperature reading failed\r\n", 0, 2, 26);
 	} else {
 		log_out("Temperature: %u C \r\n", tmp_get, 2, 26);
 	}
-
-#if WITH_CCS
-	sprintf((char *)co2_read, (char *)get_co2_readings(&hi2c3));
-	log_out("CO2: %u ppm \r\n", co2_read[0], 2, 38);
-	log_out("TVOC: %u \r\n", co2_read[1], 2, 50);
-
-#endif
-
-	brightness = calculate_brightness(&hadc1);
-	log_out("Bright: %lu LUX \r\n", brightness, 2, 38);
-	osSemaphoreRelease(CO2_SemHandle);
-	osDelay(10000);
-}
-
-void sensor_out(void) {
+	log_out("CO2: %u ppm \r\n", co2_avg_sum / 10, 2, 38);
+	log_out("TVOC: %u \r\n", tvoc_avg_sum / 10, 2, 50);
+	log_out("Brightness: %lu LUX \r\n", brightness, 2, 62);
+	co2_avg_sum = 0;
+	tvoc_avg_sum = 0;
+	avg_cnt = 0;
 }
 
 void menu_func(void) {
@@ -169,12 +155,6 @@ void menu_func(void) {
 	osDelay(1000);
 }
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-	if (huart->Instance == huart2.Instance) {
-		SIM800L_uart_callback();
-	}
-}
-
 static void Set_RGB_Color(uint16_t red, uint16_t green, uint16_t blue) {
 	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, red);
 	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, green);
@@ -182,23 +162,6 @@ static void Set_RGB_Color(uint16_t red, uint16_t green, uint16_t blue) {
 }
 
 void led_func(void) {
-#if WITH_CCS
-	if (co2_read[0] < 600) {
-		Set_RGB_Color(255, 255, 1);   //Blue
-	}
-	if (co2_read[0] >= 600 && co2_read[0] < 1000) {
-		Set_RGB_Color(255, 1, 255);   //Green
-	}
-	if (co2_read[0] >= 1000 && co2_read[0] < 1500) {
-		Set_RGB_Color(100, 10, 255);   //Yellow
-	}
-	if (co2_read[0] >= 1500 && co2_read[0] < 2200) {
-		Set_RGB_Color(60, 40, 255);
-	}
-	if (co2_read[0] >= 2200) {
-		Set_RGB_Color(1, 255, 255);   //Red
-	}
-#else
 	if (IS_GREEN_RANGE(tmp_get, tmp_min, tmp_max) && IS_GREEN_RANGE(hum_get, hum_min, hum_max)) {
 		Set_RGB_Color(255, 1, 255);   //Green
 
@@ -208,7 +171,7 @@ void led_func(void) {
 	} else {
 		Set_RGB_Color(1, 255, 255);   //Red
 	}
-#endif
+
 	if (menu) {
 		Set_RGB_Color(250, 255, 200);
 	}
@@ -227,8 +190,6 @@ void barrier_ctrl_func(void) {
 				hum_max = hum_min;
 			}
 		}
-
-		osDelay(1000);
 	} else if (tmp) {
 		ST7735_fill(ST7735_BLACK);
 		log_out("Temperature min: %u \r\n", tmp_min, 2, 2);
@@ -241,6 +202,6 @@ void barrier_ctrl_func(void) {
 				tmp_max = tmp_min;
 			}
 		}
-		osDelay(1000);
 	}
+	osDelay(1000);
 }

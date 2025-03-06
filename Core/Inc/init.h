@@ -5,7 +5,6 @@
 #include "BMP280.h"
 #include "AHT10.h"
 #include "CCS811.h"
-#include "SIM800L.h"
 #include "GL5516.h"
 
 /* This structure defines the object for interacting with the BMP280 sensor using the `BMP280_HandleTypedef` type. */
@@ -20,7 +19,6 @@ typedef enum {
 	INIT_AHT10_ERR = -1,  /* Error initializing the AHT10 sensor. */
 	INIT_BMP280_ERR = -2, /* Error initializing the BMP280 sensor. */
 	INIT_CC811_ERR = -3,  /* Error initializing the CC811 sensor. */
-	INIT_SIM800L_ERR = -4 /* Error initializing the SIM800L modem. */
 } init_state_t;
 
 /**
@@ -53,14 +51,5 @@ uint8_t humidity_sensor_init(I2C_HandleTypeDef *hi2c1);
  * @return Status of the initialization: 0 if successful, or a non-zero value if an error occurred.
  */
 uint8_t co2_sensor_init(I2C_HandleTypeDef *_hi2c);
-
-/**
- * @brief Initializes the SIM800L modem.
- * @details This function performs the initialization of the SIM800L modem and returns the status of the operation.
- * @return Status of the initialization: 0 if successful, or a non-zero value if an error occurred.
- */
-void sim_init(void);
-
-void brightness_init(ADC_HandleTypeDef *_hadc1);
 
 #endif /*__INIT_H__*/
