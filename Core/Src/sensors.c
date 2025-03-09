@@ -55,18 +55,25 @@ uint16_t *get_co2_readings(I2C_HandleTypeDef *_hi2c) {
 	return res; /* Return the array containing CO2 and TVOC readings */
 }
 
-uint32_t calculate_brightness(ADC_HandleTypeDef* _hadc1) {
-	uint32_t Pht_R;
-	float Pht_Div;
-	float Pht_Temp;
-    uint32_t Pht_Lux;
-    uint16_t readValue;
-    HAL_ADC_Start(_hadc1);
-    HAL_ADC_PollForConversion(_hadc1, 1000);
-	readValue = HAL_ADC_GetValue(_hadc1);
-	Pht_R = ((PHT_UP_R) / (4095.0 / readValue - 1));
-	Pht_Div = PHT_10LX_R / Pht_R;
-	Pht_Temp = ((0.42 * log(Pht_Div)) / (PHT_GAMMA)) + 1;
-	Pht_Lux = pow(10, Pht_Temp) * 5;
-    return Pht_Lux;
+uint32_t calculate_brightness(ADC_HandleTypeDef *_hadc1) {
+	uint32_t pht_r;
+	float pht_div;
+	float pht_temp;
+	uint32_t pht_lux;
+	uint16_t read_value;
+
+	/* Start ADC readings */
+	HAL_ADC_Start(_hadc1);
+	HAL_ADC_PollForConversion(_hadc1, 1000);
+
+	/* Get resistance value */
+	read_value = HAL_ADC_GetValue(_hadc1);
+
+	/* Convert to LUX */
+	pht_r = ((PHT_UP_R) / (4095.0 / read_value - 1));
+	pht_div = PHT_10LX_R / pht_r;
+	pht_temp = ((0.42 * log(pht_div)) / (PHT_GAMMA)) + 1;
+	pht_lux = pow(10, pht_temp) * 5;
+
+	return pht_lux;
 }

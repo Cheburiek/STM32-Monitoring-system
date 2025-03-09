@@ -48,6 +48,12 @@ float get_temperature_readings(struct BMP280_HandleTypedef *device);
  */
 uint16_t *get_co2_readings(I2C_HandleTypeDef *_hi2c);
 
+/**
+ * @brief Retrieves the brightness reading.
+ * @details This function retrieves the current brightness reading from the photoresistor.
+ * @param[in] _hadc1 Pointer to the ADC object used for communication with the sensor.
+ * @return Calculated value of brightness in lumens.
+ */
 uint32_t calculate_brightness(ADC_HandleTypeDef *_hadc1);
 
 #endif /*__SENSOR_READINGS_H__*/

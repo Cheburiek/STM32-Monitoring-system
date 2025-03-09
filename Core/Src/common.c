@@ -6,9 +6,9 @@
 	((val < min && val >= (min - 10)) || (val > max && val <= (max + 10)))
 #define IS_GREEN_RANGE(val, min, max) (val >= min && val <= max)
 
+/* Periphery hendlers */
 extern osSemaphoreId_t CO2_SemHandle;
 extern ADC_HandleTypeDef hadc1;
-
 extern I2C_HandleTypeDef hi2c1;
 extern I2C_HandleTypeDef hi2c2;
 extern I2C_HandleTypeDef hi2c3;
@@ -17,21 +17,27 @@ extern TIM_HandleTypeDef htim4;
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
 
+/* Variables for storing measurements*/
 uint16_t hum_get = 0;
 int16_t tmp_get = 0;
+uint32_t brightness = 0;
 uint16_t pressure_get = 0;
-uint16_t uart_tx_size;
-uint8_t uart_tx_data[256];
-bool menu = false, tmp = false, hum = false, ok = false;
-uint8_t hum_min = 30, hum_max = 60, tmp_min = 22, tmp_max = 26;
-uint32_t brightness;
-uint8_t barrier = 1;
 uint16_t co2_avg_sum = 0;
 uint16_t tvoc_avg_sum = 0;
+
+/* UART variables */
+uint16_t uart_tx_size;
+uint8_t uart_tx_data[256];
+
+/* Control variables */
+bool menu = false, tmp = false, hum = false, ok = false;
+uint8_t hum_min = 30, hum_max = 60, tmp_min = 22, tmp_max = 26;
+uint8_t barrier = 1;
 uint8_t avg_cnt = 0;
 
 typedef void (*ButtonHandler)(void);
 
+/* Button hendlers */
 void HandleYellowButtonPress(void) {
 	menu = true;
 }
@@ -60,12 +66,21 @@ void HandleRedButtonPress(void) {
 	ok = false;
 }
 
+/* Array of button handlers */
 ButtonHandler buttonHandlers[] = {[YELLOW_BUTTON_Pin] = HandleYellowButtonPress,
 		[BLACK_BUTTON_Pin] = HandleBlackButtonPress,
 		[BLUE_BUTTON_Pin] = HandleBlueButtonPress,
 		[GREEN_BUTTON_Pin] = HandleGreenButtonPress,
 		[RED_BUTTON_Pin] = HandleRedButtonPress};
 
+
+/**
+ * @brief Function for log output
+ * @param[in] format А pointer to a constant format string
+ * @param[in] args Argument for output
+ * @param[in] x Position X
+ * @param[in] y Position Y
+ */
 static void log_out(const char *format, unsigned int args, uint8_t x, uint8_t y) {
 	if (args) {
 		uart_tx_size = sprintf((char *)uart_tx_data, format, args);
