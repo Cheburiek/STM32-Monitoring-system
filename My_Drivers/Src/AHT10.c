@@ -49,6 +49,12 @@ uint8_t _address;
 uint8_t raw_data_buffer[6] = {AHT10_ERROR, 0, 0, 0, 0, 0};
 
 /* Result of the last I2C communication operation. */
+/**
+ * Global (not static) variable for saving results for HAL operations?
+ * Is it safe? :0
+ * I don't see that you use this variable other that check if it is HAL_OK or not.
+ * Why not just remove this variable and not create it for every function? Like in CCS811 drivers
+ */
 HAL_StatusTypeDef result;
 
 bool AHT10_init(uint8_t address, I2C_HandleTypeDef *hi2c1) {
@@ -251,6 +257,11 @@ float AHT10_read_temperature(bool i2c_read) {
 		return AHT10_ERROR;
 	}
 
+	/**
+	 * Maybe move unsigned temperature; init here?
+	 * It has a chance of not being used at all in case of an return AHT10_ERROR
+	 */
+
 	/* Extract 20-bit raw temperature data from the raw_data_buffer */
 	/* Combine bytes 3, 4, and 5 to form a 20-bit integer */
 	temperature = ((uint32_t)(raw_data_buffer[3] & TEMPERATURE_LOWER_4_BITS_MASK)
@@ -278,6 +289,11 @@ float AHT10_read_humidity(bool i2c_read) {
 		/* Return error code if there was a collision or error on the I2C bus */
 		return AHT10_ERROR;
 	}
+
+	/**
+	 * Maybe move unsigned raw_data; init here?
+	 * It has a chance of not being used at all in case of an return AHT10_ERROR
+	 */
 
 	/* Extract 20-bit raw humidity data from the raw_data_buffer */
 	/* Combine bytes 1, 2, and 3, then shift right by 4 bits to obtain 20-bit value */

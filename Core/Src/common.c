@@ -1,14 +1,17 @@
 #include <stdio.h>
 #include "common.h"
 #include "cmsis_os.h"
+#include <string.h>
+
+#define TEMP_ERR -40
 
 #define IS_YELLOW_RANGE(val, min, max) \
 	((val < min && val >= (min - 10)) || (val > max && val <= (max + 10)))
 #define IS_GREEN_RANGE(val, min, max) (val >= min && val <= max)
 
+/* Periphery hendlers */
 extern osSemaphoreId_t CO2_SemHandle;
 extern ADC_HandleTypeDef hadc1;
-
 extern I2C_HandleTypeDef hi2c1;
 extern I2C_HandleTypeDef hi2c2;
 extern I2C_HandleTypeDef hi2c3;
@@ -17,21 +20,28 @@ extern TIM_HandleTypeDef htim4;
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
 
-uint16_t hum_get = 0;
-int16_t tmp_get = 0;
-uint16_t pressure_get = 0;
-uint16_t uart_tx_size;
-uint8_t uart_tx_data[256];
-bool menu = false, tmp = false, hum = false, ok = false;
-uint8_t hum_min = 30, hum_max = 60, tmp_min = 22, tmp_max = 26;
-uint32_t brightness;
-uint8_t barrier = 1;
-uint16_t co2_avg_sum = 0;
-uint16_t tvoc_avg_sum = 0;
-uint8_t avg_cnt = 0;
+/* Variables for storing measurements*/
+/* Why not static? */
+static uint16_t hum_get = 0;
+static int16_t tmp_get = 0;
+static uint32_t brightness = 0;
+static uint16_t pressure_get = 0;
+static uint16_t co2_avg_sum = 0;
+static uint16_t tvoc_avg_sum = 0;
+
+/* UART variables */
+static uint16_t uart_tx_size;
+static uint8_t uart_tx_data[256];
+
+/* Control variables */
+static bool menu = false, tmp = false, hum = false, ok = false;
+static uint8_t hum_min = 30, hum_max = 60, tmp_min = 22, tmp_max = 26;
+static uint8_t barrier = 1;
+static uint8_t avg_cnt = 0;
 
 typedef void (*ButtonHandler)(void);
 
+/* Button hendlers */
 void HandleYellowButtonPress(void) {
 	menu = true;
 }
@@ -43,14 +53,16 @@ void HandleBlueButtonPress(void) {
 	barrier--;
 }
 void HandleGreenButtonPress(void) {
-	if (menu && barrier == 1) {
-		tmp = true;
-		barrier = 0;
-	} else if (menu && barrier == 2) {
-		hum = true;
-		barrier = 0;
-	} else if (tmp || hum) {
-		ok = true;
+	if (menu) {
+		if (barrier == 1) {
+			tmp = true;
+			barrier = 0;
+		} else if (barrier == 2) {
+			hum = true;
+			barrier = 0;
+		} else if (tmp || hum) {
+			ok = true;
+		}
 	}
 }
 void HandleRedButtonPress(void) {
@@ -60,12 +72,32 @@ void HandleRedButtonPress(void) {
 	ok = false;
 }
 
+/* Array of button handlers */
 ButtonHandler buttonHandlers[] = {[YELLOW_BUTTON_Pin] = HandleYellowButtonPress,
 		[BLACK_BUTTON_Pin] = HandleBlackButtonPress,
 		[BLUE_BUTTON_Pin] = HandleBlueButtonPress,
 		[GREEN_BUTTON_Pin] = HandleGreenButtonPress,
 		[RED_BUTTON_Pin] = HandleRedButtonPress};
 
+/**
+ * @brief Function for set LED color
+ * @param[in] red A numeric value for the red color
+ * @param[in] green A numeric value for the green color
+ * @param[in] blue A numeric value for the blue color
+ */
+static void Set_RGB_Color(uint16_t red, uint16_t green, uint16_t blue) {
+	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, red);
+	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, green);
+	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, blue);
+}
+
+/**
+ * @brief Function for log output
+ * @param[in] format А pointer to a constant format string
+ * @param[in] args Argument for output
+ * @param[in] x Position X
+ * @param[in] y Position Y
+ */
 static void log_out(const char *format, unsigned int args, uint8_t x, uint8_t y) {
 	if (args) {
 		uart_tx_size = sprintf((char *)uart_tx_data, format, args);
@@ -78,22 +110,22 @@ static void log_out(const char *format, unsigned int args, uint8_t x, uint8_t y)
 }
 
 void sensor_init(void) {
-	uint8_t get_init_result = 1;
+	uint8_t get_init_result = INIT_ERR;
 	tft_display_init();
 	log_out("INITIALIZATION \r\nSTARTED\r\n", 0, 0, 2);
 	while (get_init_result) {
 		if (humidity_sensor_init(&hi2c1)) {
-			get_init_result = 1;
+			get_init_result = INIT_ERR;
 			log_out("AHT10: Initialization failed\r\n", 0, 2, 26);
 		} else if (barometr_sensor_init(&hi2c2)) {
-			get_init_result = 1;
+			get_init_result = INIT_ERR;
 			log_out("BMP280: Initialization failed\r\n", 0, 2, 38);
 		} else if (co2_sensor_init(&hi2c3)) {
-			get_init_result = 1;
+			get_init_result = INIT_ERR;
 			log_out("CCS811: Initialization failed\r\n", 0, 2, 50);
 
 		} else {
-			get_init_result = 0;
+			get_init_result = INIT_OK;
 			log_out("BMP280: Start\r\n", 0, 2, 26);
 			log_out("AHT10: Start\r\n", 0, 2, 38);
 			log_out("CCS811: Start\r\n", 0, 2, 50);
@@ -108,7 +140,7 @@ void sensor_working(void) {
 	hum_get = (get_humidity_readings() / 100);
 	pressure_get = (get_pressure_readings(&bmp280) / 100);
 	tmp_get = (get_temperature_readings(&bmp280));
-	sprintf((char *)co2_tvoc_read, (char *)get_co2_readings(&hi2c3));
+	memcpy(co2_tvoc_read, get_co2_readings(&hi2c3), sizeof(co2_tvoc_read));
 	if (avg_cnt < 10) {
 		co2_avg_sum += co2_tvoc_read[0];
 		tvoc_avg_sum += co2_tvoc_read[1];
@@ -130,7 +162,7 @@ void sensor_out(void) {
 	} else {
 		log_out("Pressure: %u mmHg \r\n", (unsigned int)pressure_get, 2, 14);
 	}
-	if (tmp_get <= -40) {
+	if (tmp_get <= TEMP_ERR) {
 		log_out("Temperature reading failed\r\n", 0, 2, 26);
 	} else {
 		log_out("Temperature: %u C \r\n", tmp_get, 2, 26);
@@ -153,12 +185,6 @@ void menu_func(void) {
 	}
 	log_out("	* Choose: %u \r\n", barrier, 2, 38);
 	osDelay(1000);
-}
-
-static void Set_RGB_Color(uint16_t red, uint16_t green, uint16_t blue) {
-	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, red);
-	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, green);
-	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, blue);
 }
 
 void led_func(void) {

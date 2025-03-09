@@ -150,13 +150,11 @@ static void ST7735_start_data(void) {
  * @param command The command byte to be sent to the display.
  */
 static void ST7735_spi_send_com(uint8_t command) {
-	HAL_StatusTypeDef status;
-
 	/* Start command transmission */
 	ST7735_start_command();
 
 	/* Transmit command byte */
-	status = HAL_SPI_Transmit(&hspi2, &command, 1, 1000);
+	HAL_StatusTypeDef status = HAL_SPI_Transmit(&hspi2, &command, 1, 1000);
 
 	/* Check transmission status */
 	if (status != HAL_OK) {
@@ -175,14 +173,12 @@ static void ST7735_spi_send_com(uint8_t command) {
  * @param size Number of bytes to be transmitted.
  */
 static void ST7735_spi_send_data(uint8_t *data, size_t size) {
-	HAL_StatusTypeDef status;
-
 	if (size) {
 		/* Start data transmission */
 		ST7735_start_data();
 
 		/* Transmit data bytes */
-		status = HAL_SPI_Transmit(&hspi2, data, size, 1000);
+		HAL_StatusTypeDef status = HAL_SPI_Transmit(&hspi2, data, size, 1000);
 
 		/* Check transmission status */
 		if (status != HAL_OK) {
@@ -481,7 +477,7 @@ void ST7735_circle(int16_t x0, int16_t y0, int16_t r, uint16_t color) {
 	int16_t y = r;
 
 	/* Start writing to the display */
-	// ST7735_start_write();
+	ST7735_start_write();
 	/* Draw the initial points */
 	ST7735_pixel(x0, y0 + r, color);
 	ST7735_pixel(x0, y0 - r, color);
@@ -509,7 +505,7 @@ void ST7735_circle(int16_t x0, int16_t y0, int16_t r, uint16_t color) {
 		ST7735_pixel(x0 - y, y0 - x, color);
 	}
 	/* End writing to the display */
-	// ST7735_end_write();
+	ST7735_end_write();
 }
 
 void ST7735_fill_circle(int16_t x0, int16_t y0, int16_t r, uint16_t color) {
@@ -565,7 +561,7 @@ void ST7735_char(int16_t x, int16_t y, unsigned char c, uint16_t color, uint16_t
 	if (c >= 176)
 		c++;
 
-	// ST7735_start_write();
+	ST7735_start_write();
 	/* Draw each column of the character */
 	for (int8_t i = 0; i < 5; i++) {
 		uint8_t line = font[c * 5 + i];
@@ -593,7 +589,7 @@ void ST7735_char(int16_t x, int16_t y, unsigned char c, uint16_t color, uint16_t
 		else
 			ST7735_fill_rect(x + 5 * size_x, y, size_x, 8 * size_y, bg);
 	}
-	// ST7735_end_write();
+	ST7735_end_write();
 }
 
 void ST7735_putchar(char c) {
@@ -653,7 +649,4 @@ void ST7735_print_config(int16_t x, int16_t y, char *text, uint16_t color, uint1
 	textsize_x = size_x;
 	textsize_y = size_y;
 	/* Print the text using the specified configuration */
-	// osMutexAcquire(ScreenMutexHandle, 0);
-	ST7735_print(text);
-	// osMutexRelease(ScreenMutexHandle);
-}
+	ST7735_print(text);}

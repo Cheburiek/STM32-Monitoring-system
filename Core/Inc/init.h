@@ -16,6 +16,7 @@ extern struct BMP280_HandleTypedef bmp280;
  */
 typedef enum {
 	INIT_OK = 0,          /* Successful initialization. */
+	INIT_ERR = 1,         /* Initialization failed. */
 	INIT_AHT10_ERR = -1,  /* Error initializing the AHT10 sensor. */
 	INIT_BMP280_ERR = -2, /* Error initializing the BMP280 sensor. */
 	INIT_CC811_ERR = -3,  /* Error initializing the CC811 sensor. */

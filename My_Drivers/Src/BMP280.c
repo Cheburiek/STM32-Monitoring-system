@@ -11,7 +11,7 @@
  *  Shift values for pressure compensation calculations 
  */
 /* Used to scale calibration data appropriately during the pressure compensation process */
-#define BMP280_PRESSURE_CALC_SHIFT_4   4
+#define BMP280_PRESSURE_CALC_SHIFT_4 4
 /* Used to scale down intermediate calculation results by dividing them by 256 (2^8). */
 #define BMP280_PRESSURE_CALC_SHIFT_8 8
 /* Used to scale down values in intermediate calculations. */
@@ -116,9 +116,8 @@ static bool read_register(struct BMP280_HandleTypedef *device, uint8_t address, 
  */
 static inline int read_data(struct BMP280_HandleTypedef *device, uint8_t address, uint8_t *value,
 		uint8_t len) {
-	uint16_t tx_buff;
 	/* Prepare the address for I2C operation. */
-	tx_buff = (device->address << 1);
+	uint16_t tx_buff = (device->address << 1);
 
 	/* Read data from the specified register. */
 	if (HAL_I2C_Mem_Read(device->hi2c1, tx_buff, address, 1, value, len, 5000) == HAL_OK) {
@@ -163,9 +162,8 @@ static bool read_calibration_data(struct BMP280_HandleTypedef *device) {
  * @return True on success, false otherwise.
  */
 static bool write_register8(struct BMP280_HandleTypedef *device, uint8_t address, uint8_t value) {
-	uint16_t tx_buff;
 	/* Prepare the address for I2C operation.*/
-	tx_buff = (device->address << 1);
+	uint16_t tx_buff = (device->address << 1);
 
 	/* Write the data to the specified register. */
 	if (HAL_I2C_Mem_Write(device->hi2c1, tx_buff, address, 1, &value, 1, 10000) == HAL_OK) {
@@ -185,17 +183,17 @@ static bool write_register8(struct BMP280_HandleTypedef *device, uint8_t address
  */
 static inline int32_t compensate_temperature(struct BMP280_HandleTypedef *device, int32_t adc_temp,
 		int32_t *fine_temp) {
-	int32_t init_comp_par, intermed_comp_par;
-
 	/* Calculate compensation parameters. */
-	init_comp_par = ((((adc_temp >> BMP280_TEMP_SHIFT_3) - ((int32_t)device->dig_T1 << 1))) *
-							(int32_t)device->dig_T2) >>
-					BMP280_TEMP_SHIFT_11;
-	intermed_comp_par = (((((adc_temp >> BMP280_TEMP_SHIFT_4) - (int32_t)device->dig_T1) *
-								  ((adc_temp >> BMP280_TEMP_SHIFT_4) - (int32_t)device->dig_T1)) >>
-								 BMP280_TEMP_SHIFT_12) *
-								(int32_t)device->dig_T3) >>
-						BMP280_TEMP_SHIFT_14;
+	int32_t init_comp_par =
+			((((adc_temp >> BMP280_TEMP_SHIFT_3) - ((int32_t)device->dig_T1 << 1))) *
+					(int32_t)device->dig_T2) >>
+			BMP280_TEMP_SHIFT_11;
+	int32_t intermed_comp_par =
+			(((((adc_temp >> BMP280_TEMP_SHIFT_4) - (int32_t)device->dig_T1) *
+					  ((adc_temp >> BMP280_TEMP_SHIFT_4) - (int32_t)device->dig_T1)) >>
+					 BMP280_TEMP_SHIFT_12) *
+					(int32_t)device->dig_T3) >>
+			BMP280_TEMP_SHIFT_14;
 
 	*fine_temp = init_comp_par + intermed_comp_par;
 
@@ -213,13 +211,11 @@ static inline int32_t compensate_temperature(struct BMP280_HandleTypedef *device
  */
 static inline uint32_t compensate_pressure(struct BMP280_HandleTypedef *device, int32_t adc_press,
 		int32_t fine_temp) {
-	int64_t init_comp_par, intermed_comp_par, pressure;
-
 	/* Calculate the initial compensation parameter `init_comp_par` using temperature. */
-	init_comp_par = (int64_t)fine_temp - BMP280_TEMP_OFFSET;
+	int64_t init_comp_par = (int64_t)fine_temp - BMP280_TEMP_OFFSET;
 
 	/* Calculate intermediate compensation parameter `intermed_comp_par` using temperature and calibration data. */
-	intermed_comp_par = init_comp_par * init_comp_par * (int64_t)device->dig_P6;
+	int64_t intermed_comp_par = init_comp_par * init_comp_par * (int64_t)device->dig_P6;
 	intermed_comp_par = intermed_comp_par + ((init_comp_par * (int64_t)device->dig_P5)
 													<< BMP280_PRESSURE_CALC_SHIFT_17);
 	intermed_comp_par =
@@ -241,7 +237,7 @@ static inline uint32_t compensate_pressure(struct BMP280_HandleTypedef *device, 
 	}
 
 	/* Perform final pressure calculations using the compensated values. */
-	pressure = BMP280_PRESSURE_ADJUSTMENT - adc_press;
+	int64_t pressure = BMP280_PRESSURE_ADJUSTMENT - adc_press;
 	pressure = (((pressure << BMP280_PRESSURE_CALC_SHIFT_31) - intermed_comp_par) *
 					   BMP280_PRESSURE_CONVERT_SCALE) /
 			   init_comp_par;
@@ -310,7 +306,8 @@ bool BMP280_init(struct BMP280_HandleTypedef *device, struct bmp280_params_t *pa
 	}
 	/* Configure the sensor with oversampling settings and mode. */
 	uint8_t sensor_ctrl_settings = (params->oversampling_temperature << BMP280_CTRL_OS_TEMP_SHIFT) |
-								   (params->oversampling_pressure << BMP280_CTRL_OS_PRESS_SHIFT) | (params->mode);
+								   (params->oversampling_pressure << BMP280_CTRL_OS_PRESS_SHIFT) |
+								   (params->mode);
 
 	/* Return false if control register write fails. */
 	if (!write_register8(device, BMP280_REG_CTRL, sensor_ctrl_settings)) {
