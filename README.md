@@ -10,5 +10,4 @@ The STM32F407VET6 microcontroller was chosen to implement this system, as it has
 
 The following tools are used to communicate with the user:
 - TFT ST7735 display allows you to see the measurement results at all times.
-- GSM module SIM800L for sending emergency notifications to the user about violations of climatic conditions
 - RGB LED for CO2 level indication
