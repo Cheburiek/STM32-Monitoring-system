@@ -9,5 +9,5 @@ The STM32F407VET6 microcontroller was chosen to implement this system as it has 
 
 
 The following tools are used to communicate with the user:
-- TFT ST7735 display allows you always to see the measurement results.
+- TFT ST7735 display allows you to see the measurement results at all times.
 - RGB LED for CO2 level indication
